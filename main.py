@@ -6,198 +6,164 @@ import sqlite3
 
 bot = telebot.TeleBot('7704891499:AAE8fLE75VJXDaPzFmc6fRxFFlUmSQlNi3I')
 
-name = None
-age = None
-height = None
-weight = None
+# Создание базы данных и таблицы
+conn = sqlite3.connect('user_cards.db', check_same_thread=False)
+cursor = conn.cursor()
+cursor.execute('''
+CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER,
+    full_name TEXT,
+    height REAL,
+    weight REAL,
+    age INTEGER,
+    activities TEXT
+)
+''')
+conn.commit()
 
+# Словарь для временного хранения данных пользователя
+user_data = {}
+
+# Обработчик команды /start
 @bot.message_handler(commands=['start'])
-def start(message) :
-   conn = sqlite3.connect('mainDB.sql')
-   cursor = conn.cursor()
+def start(message):
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    btn_create = types.KeyboardButton('Создать карточку пользователя')
+    markup.add(btn_create)
+    
+    commands_text = """
+<b>Список доступных команд:</b>
 
-   cursor.execute('CREATE TABLE IF NOT EXISTS users (id int auto_increment primary key, name varchar(70), age int, height int, weight int, activities varchar(250))')
-   conn.commit()
-   cursor.close()
-   conn.close()
+/start - Начать работу с ботом
 
-   markup = types.InlineKeyboardMarkup()
-   btn1 = types.InlineKeyboardButton('Создать карточку игрока', callback_data='create')
-   markup.row(btn1)
-   bot.send_message(message.chat.id, f'<b>Добро пожаловать в чат-бот {message.from_user.first_name} !</b>\n\n Для просмотра информации введите - /info\n\n Для изменения данных в карточке введите - /update\n\n Для просомтра всех команд введите - /teams\n\n Для помощи по боту - /help',parse_mode='html', reply_markup=markup)
+/myinfo - Показать мою карточку
 
-@bot.callback_query_handler(func=lambda callback: True)   
-def callback_message(callback):
-   if callback.data == 'create':
-      bot.send_message(callback.message.chat.id, "Начало регистрации. Введите свое ФИО :")
-      bot.register_next_step_handler(callback.message, user_name)
+/help - Помощь
 
-def user_name(message):
-   global name
-   name = message.text.strip()
-   bot.send_message(message.chat.id, "Введите свой возраст :")
-   bot.register_next_step_handler(message, user_age)
+"""
+    bot.send_message(message.chat.id, commands_text, parse_mode='HTML', reply_markup=markup)
 
-def user_age(message):
-   global age
-   age = message.text.strip()
-   bot.send_message(message.chat.id, "Введите свой рост :")
-   bot.register_next_step_handler(message, user_height)
+# Обработчик кнопки "Создать карточку пользователя"
+@bot.message_handler(func=lambda message: message.text == 'Создать карточку пользователя')
+def create_card(message):
+    user_data[message.chat.id] = {}
+    msg = bot.send_message(message.chat.id, "Введите ФИО:")
+    bot.register_next_step_handler(msg, process_full_name)
 
-def user_height(message):
-   global height
-   height = message.text.strip()
-   bot.send_message(message.chat.id, "Введите свой вес :")
-   bot.register_next_step_handler(message, user_weight)
+def process_full_name(message):
+    chat_id = message.chat.id
+    user_data[chat_id]['full_name'] = message.text
+    msg = bot.send_message(chat_id, "Введите ваш рост (в см):")
+    bot.register_next_step_handler(msg, process_height)
 
-def user_weight(message):
-   global weight
-   weight = message.text.strip()
-   bot.send_message(message.chat.id, "Введите свои активности :")
-   bot.register_next_step_handler(message, user_activities)
+def process_height(message):
+    chat_id = message.chat.id
+    try:
+        height = float(message.text)
+        user_data[chat_id]['height'] = height
+        msg = bot.send_message(chat_id, "Введите ваш вес (в кг):")
+        bot.register_next_step_handler(msg, process_weight)
+    except ValueError:
+        msg = bot.send_message(chat_id, "Пожалуйста, введите число для роста.")
+        bot.register_next_step_handler(msg, process_height)
 
-def user_activities(message):
-   activities = message.text.strip()
+def process_weight(message):
+    chat_id = message.chat.id
+    try:
+        weight = float(message.text)
+        user_data[chat_id]['weight'] = weight
+        msg = bot.send_message(chat_id, "Введите ваш возраст:")
+        bot.register_next_step_handler(msg, process_age)
+    except ValueError:
+        msg = bot.send_message(chat_id, "Пожалуйста, введите число для веса.")
+        bot.register_next_step_handler(msg, process_weight)
 
-   conn = sqlite3.connect('mainDB.sql')
-   cursor = conn.cursor()
+def process_age(message):
+    chat_id = message.chat.id
+    try:
+        age = int(message.text)
+        user_data[chat_id]['age'] = age
+        msg = bot.send_message(chat_id, "Введите виды вашей активности (через запятую):")
+        bot.register_next_step_handler(msg, process_activities)
+    except ValueError:
+        msg = bot.send_message(chat_id, "Пожалуйста, введите целое число для возраста.")
+        bot.register_next_step_handler(msg, process_age)
 
-   cursor.execute(f"INSERT INTO users (name, age, height, weight, activities) VALUES ('%s', '%s', '%s', '%s', '%s')" % (name, age, height, weight, activities))
-   conn.commit()
+def process_activities(message):
+    chat_id = message.chat.id
+    user_data[chat_id]['activities'] = message.text
+    
+    # Сохраняем данные в базу данных
+    cursor.execute('''
+    INSERT INTO users (user_id, full_name, height, weight, age, activities)
+    VALUES (?, ?, ?, ?, ?, ?)
+    ''', (chat_id, 
+          user_data[chat_id]['full_name'], 
+          user_data[chat_id]['height'], 
+          user_data[chat_id]['weight'], 
+          user_data[chat_id]['age'], 
+          user_data[chat_id]['activities']))
+    conn.commit()
+    
+    # Создаем кнопку для просмотра информации
+    markup = types.InlineKeyboardMarkup()
+    btn_show = types.InlineKeyboardButton('Показать мою карточку', callback_data='show_card')
+    markup.add(btn_show)
+    
+    bot.send_message(chat_id, "Ваша карточка успешно создана!", reply_markup=markup)
 
-   user_id = message.from_user.id
+# Обработчик команды /myinfo
+@bot.message_handler(commands=['myinfo'])
+def myinfo(message):
+    chat_id = message.chat.id
+    cursor.execute('SELECT * FROM users WHERE user_id = ? ORDER BY id DESC LIMIT 1', (chat_id,))
+    user = cursor.fetchone()
+    
+    if user:
+        show_card_info(chat_id, user)
+    else:
+        bot.send_message(chat_id, "У вас нет созданной карточки. Нажмите 'Создать карточку пользователя'.")
 
-   markup = types.InlineKeyboardMarkup()
-   markup.add(types.InlineKeyboardButton('Открыть свою карточку', callback_data='open_card'))
-   
-   bot.send_message(message.chat.id, "<b>Пользователь зарегистрирован!</b>", parse_mode='html', reply_markup=markup)
+# Обработчик callback для кнопки "Показать мою карточку"
+@bot.callback_query_handler(func=lambda call: call.data == 'show_card')
+def callback_show_card(call):
+    chat_id = call.message.chat.id
+    cursor.execute('SELECT * FROM users WHERE user_id = ? ORDER BY id DESC LIMIT 1', (chat_id,))
+    user = cursor.fetchone()
+    
+    if user:
+        show_card_info(chat_id, user)
+    else:
+        bot.send_message(chat_id, "У вас нет созданной карточки. Нажмите 'Создать карточку пользователя'.")
 
-   cursor.close()
-   conn.close()
+def show_card_info(chat_id, user):
+    card_info = f"""
+📋 Ваша карточка:
 
-@bot.callback_query_handler(func=lambda call: call.data == 'open_card')
-def open_card(call):
-      bot.answer_callback_query(call.id)
+ФИО: {user[2]}
+Рост: {user[3]} см
+Вес: {user[4]} кг
+Возраст: {user[5]} лет
+Виды активности: {user[6]}
+"""
+    bot.send_message(chat_id, card_info)
 
-      user_id = call.from_user.id
-
-      conn = sqlite3.connect('mainDB.sql')
-      cursor = conn.cursor()
-
-      cursor.execute('SELECT * FROM users WHERE id = ?', (user_id,))
-      user_data = cursor.fetchone()
-
-      if user_data:
-         info = f"""
-         📌 <b>Ваша карточка</b> 📌
-            
-         👤 Имя: {user_data[1]}
-         🎂 Возраст: {user_data[2]}
-         📏 Рост: {user_data[3]}
-         ⚖️ Вес: {user_data[4]}
-         🏃 Активности: {user_data[5]}
-            """
-         bot.send_message(call.message.chat.id, info, parse_mode='HTML')
-
-      cursor.close()
-      conn.close()
-
-
-@bot.message_handler(commands=['menu'])
-def menu(message) :
-   markup = types.ReplyKeyboardMarkup()
-   btn1 = types.KeyboardButton('Просмотреть свою карточку')
-   markup.row(btn1)
-   btn2 = types.KeyboardButton('Добавить данные')
-   btn3 = types.KeyboardButton('Посмотреть всеx пользователей')
-   markup.row(btn2,btn3)
-   bot.send_message(message.chat.id, 'Меню выбора действий' , reply_markup=markup)
-   bot.register_next_step_handler(message, on_click)
-
-def on_click(message): 
-   if message.text == 'Просмотреть свою карточку':
-      user_id = message.from_user.id
-
-      conn = sqlite3.connect('mainDB.sql')
-      cursor = conn.cursor()
-
-      cursor.execute("SELECT * FROM users WHERE id = ?", (user_id,))
-      
-      users = cursor.fetchall()
-
-      # info = ''
-      # for el in users:
-      #    info+= f'{el[1]}\n\n Возраст: {el[2]}\n\n Рост: {el[3]}\n\n Вес: {el[4]}\n\n Активности: {el[5]}\n\n'
-      
-      if users:
-         info = f"""
-         Имя: {users[1]}
-         Возраст: {users[2]}
-         Рост: {users[3]}
-         Вес: {users[4]}
-         Активности: {users[5]}
-         """
-         bot.send_message(message.chat.id, info)
-
-      cursor.close()
-      conn.close()
-
-      # bot.send_message(message.chat.id, users)
-
-   if message.text == 'Добавить данные':
-      bot.send_message(message.chat.id, 'Добавить данные')
-
-   if message.text == 'Посмотреть всеx пользователей':
-
-      conn = sqlite3.connect('mainDB.sql')
-      cursor = conn.cursor()
-
-      cursor.execute('SELECT * FROM users')
-      users = cursor.fetchall()
-
-      info = ''
-      for el in users:
-         info+= f'{el[1]}\n\n Возраст: {el[2]}\n\n Рост: {el[3]}\n\n Вес: {el[4]}\n\n Активности: {el[5]}\n\n'
-      
-      cursor.close()
-      conn.close()
-   
-      bot.send_message(message.chat.id, info)
-   
-
-@bot.message_handler(commands=['site'])
-def site(message) :
-   bot.send_message(message.chat.id, '<b>Перенаправляю на сайт </b>', parse_mode='html')
-   webbrowser.open('https://minudo.ru/')
-
-
+# Обработчик команды /help
 @bot.message_handler(commands=['help'])
-def main(message) :
-   bot.send_message(message.chat.id, '<b>Чем я могу помочь ?</b>', parse_mode='html')
+def help(message):
+    help_text = """
 
-@bot.message_handler()
-def info(m):
-   if m.text.lower() == 'привет':
-      bot.send_message(m.chat.id, f'Привет, {m.from_user.first_name} {m.from_user.last_name}')
-   elif m.text.lower() == 'id':
-      bot.reply_to(m, f'Твой идентефикатор: {m.from_user.id}')
+Команды:
+/start - Начать работу с ботом
+/myinfo - Показать мою карточку
+/help - Показать это сообщение
 
-@bot.message_handler(content_types=['photo'])
-def get_photo(message) :
-   markup = types.InlineKeyboardMarkup()
-   btn1 = types.InlineKeyboardButton('Перейти на сайт', url='https://minudo.ru/')
-   markup.row(btn1)
-   btn2 = types.InlineKeyboardButton('Удалить фото', callback_data='delete')
-   btn3 = types.InlineKeyboardButton('Изменить текст', callback_data='edit')
-   markup.row(btn2,btn3)
-   bot.reply_to(message, "Это ваше фото", reply_markup=markup)
+"""
+    bot.send_message(message.chat.id, help_text)
 
-@bot.callback_query_handler(func=lambda callback: True)   
-def callback_message(callback):
-   if callback.data == 'delete':
-      bot.delete_message(callback.message.chat.id, callback.message.message_id - 1)
-   elif callback == 'edit':
-      bot.edit_message_text('Edit text',callback.message.chat.id, callback.message.message_id)
+# Запуск бота
+if __name__ == '__main__':
+    print("Бот запущен...")
+    bot.infinity_polling()
 
-
-bot.polling(none_stop=True)
