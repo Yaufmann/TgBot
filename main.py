@@ -4,7 +4,7 @@ import webbrowser
 import sqlite3
 
 
-bot = telebot.TeleBot('7704891499:AAE8fLE75VJXDaPzFmc6fRxFFlUmSQlNi3I')
+bot = telebot.TeleBot('')
 
 # Создание базы данных и таблицы
 conn = sqlite3.connect('user_cards.db', check_same_thread=False)
@@ -28,11 +28,27 @@ user_data = {}
 # Обработчик команды /start
 @bot.message_handler(commands=['start'])
 def start(message):
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    btn_create = types.KeyboardButton('Создать карточку пользователя')
-    markup.add(btn_create)
+   chat_id = message.chat.id
+
+   cursor.execute('SELECT * FROM users WHERE user_id = ?', (chat_id,))
+   user = cursor.fetchone()
+
+   markup = types.InlineKeyboardMarkup() 
+
+   if user:
+        # Если пользователь уже существует
+        btn_show = types.InlineKeyboardButton('Показать мою карточку',callback_data='show_card')
+        markup.add(btn_show)
+        bot.send_message(
+            chat_id,
+            "Вы уже создали карточку. Нажмите кнопку ниже, чтобы посмотреть её.",
+            reply_markup=markup
+        )
+   else:
+      btn_create = types.InlineKeyboardButton('Создать карточку пользователя')
+      markup.add(btn_create)
     
-    commands_text = """
+      commands_text = """
 <b>Список доступных команд:</b>
 
 /start - Начать работу с ботом
@@ -42,7 +58,7 @@ def start(message):
 /help - Помощь
 
 """
-    bot.send_message(message.chat.id, commands_text, parse_mode='HTML', reply_markup=markup)
+      bot.send_message(chat_id, commands_text, parse_mode='HTML', reply_markup=markup)
 
 # Обработчик кнопки "Создать карточку пользователя"
 @bot.message_handler(func=lambda message: message.text == 'Создать карточку пользователя')
