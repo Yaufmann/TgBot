@@ -69,6 +69,9 @@ print("Команда 2 в таблице:", teams)
 cursor.execute("SELECT * FROM users_comm WHERE team_id = 3")
 teams = cursor.fetchall()
 print("Команда 3 в таблице:", teams)
+# cursor.execute("SELECT team_id FROM users_comm WHERE user_id = 1247677586")
+# teams = cursor.fetchone()
+# print("team_id текущего пользователя:", teams)
 
 # Словарь для временного хранения данных пользователя
 user_data = {}
@@ -289,6 +292,7 @@ def help(message):
 Команды:
 /start - Начать работу с ботом
 /myinfo - Показать мою карточку
+/mycomm - Показать мою команду
 /help - Показать это сообщение
 
 """
@@ -319,6 +323,37 @@ def show_all_users(chat_id,users):
 Виды активности: {el[6]}
 """
     bot.send_message(chat_id, card_info)
+
+#Получить команду к которой привязан пользователь по его user_id (работает)
+@bot.message_handler(commands=['mycomm'])
+def myinfo(message):
+    chat_id = message.chat.id
+    print(chat_id)
+
+    cursor.execute("SELECT team_id FROM users_comm WHERE user_id = ?",(chat_id,))
+    team_id = cursor.fetchone()
+    print(int(team_id[0]))
+    
+    
+    cursor.execute('SELECT * FROM users_comm WHERE team_id = ?',(team_id[0],))
+    users = cursor.fetchall()
+
+    card_info = ''
+
+    for el in users:
+        card_info += f"""
+📋 Участник вашей команды номер {el[0]}:
+
+ФИО: {el[3]}
+Рост: {el[4]} см
+Вес: {el[5]} кг
+Возраст: {el[6]} лет
+Виды активности: {el[7]}
+"""     
+    bot.send_message(chat_id, card_info)
+ 
+
+
 # Запуск бота
 if __name__ == '__main__':
     print("Бот запущен...")
